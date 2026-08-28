@@ -1,0 +1,20 @@
+{
+  "name": "indie-news-dashboard",
+  "version": "1.0.0",
+  "description": "The Signal Desk — a self-hosted independent-news aggregator",
+  "main": "index.js",
+  "scripts": {
+    "start": "node server.js",
+    "test": "node test-parse.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "express": "^5.2.1",
+    "rss-parser": "^3.13.0"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

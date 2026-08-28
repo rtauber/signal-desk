@@ -1,0 +1,56 @@
+{
+  "_comment": "Add / remove sources freely. This file is the whole control panel. Three kinds of source are supported:",
+  "_how_to_add": {
+    "youtube": "type: 'youtube'. Give EITHER a 'channelId' (starts with UC...) OR a 'handle'/'url' (e.g. '@MeidasTouch' or the channel URL). The server resolves handles to channel IDs automatically. No API key needed.",
+    "podcast": "type: 'podcast'. Give EITHER a direct 'rss' feed URL OR an 'appleId' (the number in an Apple Podcasts URL, e.g. 1650340709). The server resolves Apple IDs to their RSS feed.",
+    "article": "type: 'article'. Give a direct 'rss' URL. Most news sites and every Substack has one (Substack = the site URL + /feed)."
+  },
+  "sources": [
+    {
+      "name": "MeidasTouch",
+      "type": "youtube",
+      "handle": "@MeidasTouch"
+    },
+    {
+      "name": "The Don Lemon Show",
+      "type": "youtube",
+      "channelId": "UCXs0PlIGUDSXfBaF7j-1euA"
+    },
+    {
+      "name": "I've Had It (Jen & Pumps)",
+      "type": "podcast",
+      "appleId": "1650340709"
+    },
+    {
+      "name": "IHIP News",
+      "type": "podcast",
+      "appleId": "1761444284"
+    },
+    "--- extra independent voices below — confirm/edit/delete to taste ---",
+    {
+      "name": "Breaking Points",
+      "type": "youtube",
+      "handle": "@breakingpoints"
+    },
+    {
+      "name": "The Bulwark",
+      "type": "youtube",
+      "handle": "@thebulwark"
+    },
+    {
+      "name": "Democracy Now!",
+      "type": "youtube",
+      "handle": "@democracynow"
+    },
+    {
+      "name": "ProPublica",
+      "type": "article",
+      "rss": "https://www.propublica.org/feeds/propublica/main"
+    },
+    {
+      "name": "The Intercept",
+      "type": "article",
+      "rss": "https://theintercept.com/feed/"
+    }
+  ]
+}
