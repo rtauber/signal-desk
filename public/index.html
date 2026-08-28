@@ -180,6 +180,7 @@
   .fld:focus{border-color:var(--dim)}
   .fld::placeholder{color:var(--dim)}
   .addhelp{font-size:11.5px;color:var(--muted);line-height:1.4}
+  .suggest-intro{font-size:12.5px;color:var(--muted);line-height:1.45}
   .addbtn{align-self:flex-start;background:var(--signal);color:#fff;border:0;border-radius:8px;
     font-family:var(--grotesk);font-weight:600;font-size:13px;padding:9px 18px;cursor:pointer}
   .addbtn:hover{filter:brightness(1.08)}
@@ -253,7 +254,7 @@
       <button class="mclose" id="mclose" aria-label="Close">✕</button>
     </div>
     <div class="mbody">
-      <div class="addbox">
+      <div id="ownerBox" class="addbox">
         <div class="seg2" id="addtype" role="group" aria-label="Source type">
           <button data-t="youtube" aria-pressed="true">Video</button>
           <button data-t="podcast" aria-pressed="false">Podcast</button>
@@ -265,7 +266,21 @@
         <button class="addbtn" id="addbtn">Add source</button>
         <div class="addstatus" id="addstatus" aria-live="polite"></div>
       </div>
-      <div class="mlist-label">Your sources</div>
+      <div id="suggestBox" class="addbox" style="display:none">
+        <div class="suggest-intro">Spotted something good? Suggest it — it goes straight to the curator, who can add it to the wall.</div>
+        <div class="seg2" id="sugtype" role="group" aria-label="Suggested source type">
+          <button data-t="youtube" aria-pressed="true">Video</button>
+          <button data-t="podcast" aria-pressed="false">Podcast</button>
+          <button data-t="article" aria-pressed="false">Article</button>
+        </div>
+        <input id="sugname" class="fld" placeholder="Name (e.g. Some Channel)" aria-label="Suggested source name" />
+        <input id="suglink" class="fld" placeholder="Link — YouTube @handle, Apple Podcasts link, or site/RSS" aria-label="Link" />
+        <input id="sugwho" class="fld" placeholder="Your name (optional)" aria-label="Your name" />
+        <input type="text" id="sugbot" tabindex="-1" autocomplete="off" aria-hidden="true" style="position:absolute;left:-9999px" />
+        <button class="addbtn" id="sugbtn">Send suggestion</button>
+        <div class="addstatus" id="sugstatus" aria-live="polite"></div>
+      </div>
+      <div class="mlist-label" id="mlistLabel">Your sources</div>
       <div id="mlist" class="mlist"></div>
     </div>
   </div>
@@ -273,6 +288,12 @@
 
 <script>
 const state = { items: [], sources: [], type: 'all', source: 'all', q: '', live: false };
+
+// The full add/remove panel shows only where the server actually accepts edits
+// (your own machine). Everywhere else — i.e. the live site your friends visit —
+// they get a "suggest a source" form instead. This mirrors the server's rule.
+const WEB3FORMS_KEY = "e6432a1c-1c4d-44ed-ad6c-2eee2b98a431"; // Web3Forms access key (safe to be public)
+const IS_OWNER = ["localhost", "127.0.0.1", "::1"].includes(location.hostname);
 
 // Demo data so the page is alive even before the server is running.
 const DEMO_ITEMS = [
@@ -409,7 +430,13 @@ const ADD_HINT={
   podcast:["Apple Podcasts link or RSS URL","Paste the show's Apple Podcasts link — we'll find its feed — or a direct RSS URL."],
   article:["Website or RSS link (e.g. name.substack.com)","Paste the site address or its RSS link — we'll find the feed. Substacks work great."]
 };
-function openManage(){backdrop.classList.add("open");renderManageList();}
+function openManage(){
+  backdrop.classList.add("open");
+  document.getElementById("ownerBox").style.display = IS_OWNER ? "" : "none";
+  document.getElementById("suggestBox").style.display = IS_OWNER ? "none" : "";
+  document.getElementById("mlistLabel").textContent = IS_OWNER ? "Your sources" : "Currently on this wall";
+  renderManageList();
+}
 function closeManage(){backdrop.classList.remove("open");document.getElementById("addstatus").textContent="";}
 document.getElementById("manage").onclick=openManage;
 document.getElementById("mclose").onclick=closeManage;
@@ -454,8 +481,8 @@ async function renderManageList(){
     list.innerHTML=arr.map(s=>`<div class="mrow" data-type="${t(s.type)}">
       <span class="sdot"></span><span class="mname">${esc(s.name)}</span>
       <span class="mtype">${t(s.type)}</span>
-      <button class="mdel" data-name="${esc(s.name)}" aria-label="Remove ${esc(s.name)}">✕</button></div>`).join("");
-    list.querySelectorAll(".mdel").forEach(b=>b.onclick=async()=>{
+      ${IS_OWNER?`<button class="mdel" data-name="${esc(s.name)}" aria-label="Remove ${esc(s.name)}">✕</button>`:``}</div>`).join("");
+    if(IS_OWNER) list.querySelectorAll(".mdel").forEach(b=>b.onclick=async()=>{
       b.disabled=true;
       await fetch("/api/sources",{method:"DELETE",headers:{"Content-Type":"application/json"},
         body:JSON.stringify({name:b.dataset.name})}).catch(()=>{});
@@ -463,6 +490,37 @@ async function renderManageList(){
     });
   }catch(e){list.innerHTML=`<div class="mnote">Couldn't load your list.</div>`;}
 }
+
+// ---- Suggest a source (what friends see on the live site) ----
+if(!IS_OWNER){const mb=document.getElementById("manage");if(mb)mb.textContent="＋ Suggest";}
+let sugType="youtube";
+document.querySelectorAll("#sugtype button").forEach(b=>b.onclick=()=>{
+  sugType=b.dataset.t;
+  document.querySelectorAll("#sugtype button").forEach(x=>x.setAttribute("aria-pressed",x===b));
+});
+const sugBtn=document.getElementById("sugbtn");
+if(sugBtn) sugBtn.onclick=async()=>{
+  const name=document.getElementById("sugname").value.trim();
+  const link=document.getElementById("suglink").value.trim();
+  const who=document.getElementById("sugwho").value.trim();
+  const status=document.getElementById("sugstatus");
+  if(document.getElementById("sugbot").value) return; // honeypot: ignore bots
+  if(!name||!link){status.className="addstatus err";status.textContent="Add a name and a link first.";return;}
+  if(WEB3FORMS_KEY==="YOUR_WEB3FORMS_ACCESS_KEY"){
+    status.className="addstatus err";status.textContent="Suggestions aren't switched on yet — the owner needs to add their form key.";return;}
+  sugBtn.disabled=true;status.className="addstatus";status.textContent="Sending…";
+  try{
+    const res=await fetch("https://api.web3forms.com/submit",{method:"POST",
+      headers:{"Content-Type":"application/json","Accept":"application/json"},
+      body:JSON.stringify({access_key:WEB3FORMS_KEY,subject:"Signal Desk — source suggestion",
+        from_name:"Signal Desk","Suggested source":name,"Type":sugType,"Link":link,"Suggested by":who||"(anonymous)"})});
+    const d=await res.json();
+    if(!d.success)throw new Error();
+    status.className="addstatus ok";status.textContent="Sent ✓ — thanks! The curator will take a look.";
+    document.getElementById("sugname").value="";document.getElementById("suglink").value="";document.getElementById("sugwho").value="";
+  }catch(e){status.className="addstatus err";status.textContent="Couldn't send that — try again in a moment.";}
+  finally{sugBtn.disabled=false;}
+};
 
 // Register the service worker (runs only over https / localhost — that's fine).
 if("serviceWorker" in navigator){
