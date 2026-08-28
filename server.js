@@ -235,7 +235,10 @@ async function aggregate(force = false) {
 
 const app = express();
 app.use(express.json());
+// Serve the dashboard whether its files live in /public (local layout) or
+// sit alongside server.js at the repo root (simple GitHub upload layout).
 app.use(express.static(path.join(__dirname, 'public')));
+app.use(express.static(__dirname));
 
 app.get('/api/feed', async (req, res) => {
   try {
