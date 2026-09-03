@@ -111,7 +111,7 @@ function normalize(source, feed, item) {
     source: source.name,
     type: KIND[source.type] || 'article',
     title: (item.title || 'Untitled').trim(),
-    url: item.link,
+    url: bestLink(source, feed, item),
     thumbnail: pickThumbnail(source, item) || feed.image?.url || null,
     published: item.isoDate || null,
     publishedMs,
@@ -206,11 +206,44 @@ function editsAllowed(req) {
   return process.env.ALLOW_EDITS === 'true';
 }
 
+// The best clickable PAGE for an item — an episode/article page, never a raw
+// audio file. Podcasts whose feed omits a link fall back to their Apple show page.
+function bestLink(source, feed, item) {
+  if (item.link) return item.link;
+  const g = item.guid || item.id || '';
+  if (/^https?:\/\//i.test(g)) return g;
+  if (source.type === 'podcast' && source.appleId)
+    return `https://podcasts.apple.com/podcast/id${source.appleId}`;
+  return feed.link || null;
+}
+
+// Map a podcast's episode GUIDs -> their Apple Podcasts episode pages, so a tap
+// opens the specific episode. Cached; fails soft if Apple is slow/unavailable.
+const episodeCache = new Map();
+async function episodeLinkMap(appleId) {
+  const hit = episodeCache.get(appleId);
+  if (hit && Date.now() - hit.at < CACHE_TTL_MS) return hit.map;
+  const data = JSON.parse(
+    await fetchText(`https://itunes.apple.com/lookup?id=${appleId}&entity=podcastEpisode&limit=200`)
+  );
+  const map = {};
+  for (const r of data.results || []) {
+    if (r.episodeGuid && r.trackViewUrl) map[r.episodeGuid] = r.trackViewUrl;
+  }
+  episodeCache.set(appleId, { map, at: Date.now() });
+  return map;
+}
+
 async function fetchSource(source) {
   try {
     const url = await feedUrlFor(source);
     const feed = await parser.parseURL(url);
-    const items = (feed.items || []).map((it) => normalize(source, feed, it));
+    let items = (feed.items || []).map((it) => normalize(source, feed, it));
+    // For podcasts, upgrade each link to its exact Apple Podcasts episode page.
+    if (source.type === 'podcast' && source.appleId) {
+      const map = await episodeLinkMap(source.appleId).catch(() => null);
+      if (map) items = items.map((it) => (map[it.id] ? { ...it, url: map[it.id] } : it));
+    }
     return { name: source.name, type: KIND[source.type], ok: true, count: items.length, items };
   } catch (err) {
     return { name: source.name, type: KIND[source.type], ok: false, error: err.message, items: [] };
