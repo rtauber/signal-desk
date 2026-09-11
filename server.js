@@ -10,11 +10,18 @@ const path = require('path');
 
 const PORT = process.env.PORT || 3000;
 const CACHE_TTL_MS = 5 * 60 * 1000; // re-fetch feeds at most every 5 minutes
-const UA = 'Mozilla/5.0 (SignalDesk news aggregator)';
+const UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36';
+// Look like a real browser and carry a consent cookie — YouTube serves unknown
+// clients a consent gate (empty feed) instead of the videos; this slips past it.
+const BROWSERISH_HEADERS = {
+  'User-Agent': UA,
+  'Accept-Language': 'en-US,en;q=0.9',
+  'Cookie': 'CONSENT=YES+cb.20210328-17-p0.en+FX+000; SOCS=CAI',
+};
 
 const parser = new Parser({
-  headers: { 'User-Agent': UA },
-  timeout: 15000,
+  headers: BROWSERISH_HEADERS,
+  timeout: 20000,
   customFields: {
     item: [
       ['yt:videoId', 'ytVideoId'],
@@ -29,9 +36,18 @@ const parser = new Parser({
 // ---------- source resolution ----------
 
 async function fetchText(url) {
-  const res = await fetch(url, { headers: { 'User-Agent': UA } });
-  if (!res.ok) throw new Error(`HTTP ${res.status} for ${url}`);
-  return res.text();
+  let lastErr;
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const res = await fetch(url, { headers: BROWSERISH_HEADERS });
+      if (!res.ok) throw new Error(`HTTP ${res.status} for ${url}`);
+      return res.text();
+    } catch (e) {
+      lastErr = e;
+      await new Promise((r) => setTimeout(r, 400));
+    }
+  }
+  throw lastErr;
 }
 
 // Turn an @handle or channel URL into a UC... channel id by reading the page.
@@ -237,7 +253,12 @@ async function episodeLinkMap(appleId) {
 async function fetchSource(source) {
   try {
     const url = await feedUrlFor(source);
-    const feed = await parser.parseURL(url);
+    let feed, lastErr;
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try { feed = await parser.parseURL(url); break; }
+      catch (e) { lastErr = e; await new Promise((r) => setTimeout(r, 500)); }
+    }
+    if (!feed) throw lastErr;
     let items = (feed.items || []).map((it) => normalize(source, feed, it));
     // For podcasts, upgrade each link to its exact Apple Podcasts episode page.
     if (source.type === 'podcast' && source.appleId) {
