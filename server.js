@@ -254,9 +254,9 @@ async function fetchSource(source) {
   try {
     const url = await feedUrlFor(source);
     let feed, lastErr;
-    for (let attempt = 0; attempt < 2; attempt++) {
+    for (let attempt = 0; attempt < 3; attempt++) {
       try { feed = await parser.parseURL(url); break; }
-      catch (e) { lastErr = e; await new Promise((r) => setTimeout(r, 500)); }
+      catch (e) { lastErr = e; await new Promise((r) => setTimeout(r, 600 * (attempt + 1))); }
     }
     if (!feed) throw lastErr;
     let items = (feed.items || []).map((it) => normalize(source, feed, it));
@@ -276,7 +276,18 @@ let cache = { items: [], statuses: [], fetchedAt: 0 };
 async function aggregate(force = false) {
   if (!force && Date.now() - cache.fetchedAt < CACHE_TTL_MS && cache.items.length)
     return cache;
-  const results = await Promise.all(loadSources().map(fetchSource));
+  const sources = loadSources();
+  const others = sources.filter((s) => s.type !== 'youtube');
+  const yt = sources.filter((s) => s.type === 'youtube');
+  // Podcasts/articles don't throttle us — fetch them together.
+  const otherResults = await Promise.all(others.map(fetchSource));
+  // YouTube throttles bursts, so fetch video feeds one at a time with a short gap.
+  const ytResults = [];
+  for (const s of yt) {
+    ytResults.push(await fetchSource(s));
+    await new Promise((r) => setTimeout(r, 600));
+  }
+  const results = [...otherResults, ...ytResults];
   const items = results
     .flatMap((r) => r.items)
     .sort((a, b) => b.publishedMs - a.publishedMs);
